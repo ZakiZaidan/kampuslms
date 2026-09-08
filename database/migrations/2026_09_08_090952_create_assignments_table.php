@@ -18,11 +18,7 @@ return new class extends Migration
         });
     }
 
-    // BUG 4: down() dikosongkan — migrate:refresh / migrate:rollback
-    // akan gagal karena tabel tidak terhapus.
-    // Harusnya: Schema::dropIfExists('assignments');
     public function down(): void
     {
-        // BUG 4: kosong sengaja — migrasi tidak reversible
     }
 };

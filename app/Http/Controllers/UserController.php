@@ -18,24 +18,8 @@ class UserController extends Controller
         return view('users.create');
     }
 
-    /**
-     * BUG 6: Memakai $request->all() untuk mengisi model User.
-     *
-     * Karena User::$guarded = [] (Bug 5), SEMUA field dari request
-     * diteruskan langsung ke database — termasuk field yang tidak ada
-     * di form HTML, seperti 'role'.
-     *
-     * Penyerang cukup mengirim: POST /users dengan tambahan role=admin
-     * → ia menjadi admin tanpa ada yang menghentikannya.
-     *
-     * Perbaikan yang benar:
-     *   User::create($request->only(['name', 'email', 'password']));
-     *   // lalu set role secara eksplisit jika diperlukan:
-     *   // $user->role = 'student'; $user->save();
-     */
     public function store(Request $request)
     {
-        // BUG 6: $request->all() → semua input pengguna masuk, termasuk 'role'
         User::create($request->all());
 
         return redirect()->route('users.index')
@@ -54,7 +38,6 @@ class UserController extends Controller
 
     public function update(Request $request, User $user)
     {
-        // BUG 6 (juga di sini): $request->all() bisa mengubah role via request
         $user->update($request->all());
 
         return redirect()->route('users.show', $user)
