@@ -1,24 +1,15 @@
 @extends('layouts.app')
 
-@section('title', 'Detail: ' . $course['nama'])
+@section('title', $course->name)
 
 @section('content')
-    <a href="{{ route('courses.index') }}" style="color:#4f46e5;">← Kembali ke Daftar</a>
-    <div class="card" style="margin-top:1rem;">
-        <h1>{{ $course['nama'] }}</h1>
-        <table style="width:100%; border-collapse:collapse; margin-top:1rem;">
-            <tr>
-                <td style="padding:.5rem; color:#555; width:150px;">Kode MK</td>
-                <td style="padding:.5rem; font-weight:bold;">{{ $course['kode'] }}</td>
-            </tr>
-            <tr style="background:#f9f9f9;">
-                <td style="padding:.5rem; color:#555;">SKS</td>
-                <td style="padding:.5rem; font-weight:bold;">{{ $course['sks'] }}</td>
-            </tr>
-            <tr>
-                <td style="padding:.5rem; color:#555;">Deskripsi</td>
-                <td style="padding:.5rem;">{{ $course['deskripsi'] }}</td>
-            </tr>
-        </table>
-    </div>
+<h1>{{ $course->name }}</h1>
+<p><strong>Kode:</strong> {{ $course->code }}</p>
+<p><strong>SKS:</strong> {{ $course->sks }}</p>
+<p><strong>Status:</strong> {{ $course->status }}</p>
+<p><strong>Dosen:</strong> {{ $course->lecturer?->name ?? '-' }}</p>
+<p><strong>Deskripsi:</strong> {{ $course->description ?? '-' }}</p>
+
+<a href="{{ route('courses.edit', $course) }}">Edit</a>
+<a href="{{ route('courses.index') }}">Kembali</a>
 @endsection
