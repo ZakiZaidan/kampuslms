@@ -14,11 +14,6 @@ class MaterialController extends Controller
         return view('materials.index', compact('course', 'materials'));
     }
 
-    // BUG 2b: IDOR — tidak ada pengecekan bahwa material ini milik course ini.
-    // Tanpa scopeBindings() di route, URL /dosen/courses/1/materials/99
-    // akan berhasil meski material 99 milik courses lain.
-    // Selain itu, tidak ada pengecekan bahwa dosen yang mengakses
-    // adalah pengampu courses ini.
     public function show(Course $course, Material $material)
     {
         return view('materials.show', compact('course', 'material'));
@@ -36,6 +31,13 @@ class MaterialController extends Controller
             'content' => ['nullable', 'string'],
             'order'   => ['nullable', 'integer'],
         ]);
+
+        // BUG 9: $this->authorize() dipakai bukan Gate::authorize().
+        // Di Laravel 11+, kelas dasar Controller sudah TIDAK menyertakan
+        // trait AuthorizesRequests lagi, sehingga $this->authorize() akan
+        // melempar: "Call to undefined method authorize()".
+        // Seharusnya: Gate::authorize('create', $course);
+        $this->authorize('create', $course);
 
         $material = $course->materials()->create($request->only(['title', 'content', 'order']));
 
@@ -55,6 +57,9 @@ class MaterialController extends Controller
             'content' => ['nullable', 'string'],
             'order'   => ['nullable', 'integer'],
         ]);
+
+        // BUG 9 (lanjutan): $this->authorize() juga di sini.
+        $this->authorize('update', $course);
 
         $material->update($request->only(['title', 'content', 'order']));
 

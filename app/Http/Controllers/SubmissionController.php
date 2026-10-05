@@ -9,15 +9,14 @@ class SubmissionController extends Controller
 {
     public function index()
     {
-        // Hanya tampilkan submission milik user yang login
         $submissions = auth()->user()->submissions()->with('assignment')->latest()->get();
         return view('submissions.index', compact('submissions'));
     }
 
-    // BUG 2a: IDOR — tidak ada pengecekan kepemilikan.
-    // Siapa pun yang login bisa mengakses /submissions/{id} milik orang lain
-    // hanya dengan mengganti angka di URL.
-    // Route model binding hanya menjamin data ADA, bukan bahwa pengguna BERHAK melihatnya.
+    // BUG 1b: Tidak ada Gate::authorize() — hanya @can di Blade yang menyembunyikan tombol.
+    // Mahasiswa A bisa mengakses /submissions/{id} milik mahasiswa B
+    // cukup dengan mengetik URL-nya langsung di browser.
+    // Ini adalah IDOR dari minggu 5 yang belum ditutup oleh Policy.
     public function show(Submission $submission)
     {
         return view('submissions.show', compact('submission'));

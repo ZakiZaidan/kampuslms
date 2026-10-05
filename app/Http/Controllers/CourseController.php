@@ -10,32 +10,21 @@ use Illuminate\Http\Request;
 
 class CourseController extends Controller
 {
+    // BUG 3: Kebocoran daftar — semua mata kuliah dikembalikan tanpa
+    // menyaring berdasarkan peran pengguna.
+    // Mahasiswa seharusnya hanya melihat MK yang diikutinya.
+    // Dosen seharusnya hanya melihat MK yang diampunya.
+    // Seharusnya pakai match($user->role) untuk menyaring di level query.
     public function index(Request $request)
     {
-        // BUG 3: filter disimpan ke session, bukan diambil dari query string.
-        // Akibatnya: dua tab browser saling mengganggu, URL tidak bisa dibagikan,
-        // dan tombol Back tidak bekerja sesuai harapan.
-        if ($request->filled('q')) {
-            session(['course_search' => $request->q]);
-        }
-        if ($request->filled('status')) {
-            session(['course_status' => $request->status]);
-        }
+        $courses = Course::with('lecturer')
+            ->when($request->filled('q'), fn ($q) =>
+                $q->where('name', 'like', "%{$request->q}%")
+                  ->orWhere('code', 'like', "%{$request->q}%"))
+            ->paginate(15)
+            ->withQueryString();
 
-        $q      = session('course_search');
-        $status = session('course_status');
-
-        $courses = Course::query()
-            ->with('lecturer')
-            ->when($q,      fn ($query) => $query->where('name', 'like', "%$q%")
-                                                  ->orWhere('code', 'like', "%$q%"))
-            ->when($status, fn ($query) => $query->where('status', $status))
-            ->latest()
-            // BUG 4: ->withQueryString() dihilangkan.
-            // Akibatnya: klik halaman 2 → filter hilang → pengguna bingung.
-            ->paginate(15);
-
-        return view('courses.index', compact('courses', 'q', 'status'));
+        return view('courses.index', compact('courses'));
     }
 
     public function create()
@@ -46,41 +35,41 @@ class CourseController extends Controller
 
     public function store(StoreCourseRequest $request)
     {
-        Course::create($request->validated());
-
-        // BUG 5: tidak redirect setelah store — langsung return view.
-        // Akibatnya: tekan F5 setelah simpan → browser kirim ulang POST → data duplikat.
-        return view('courses.index', [
-            'courses' => Course::with('lecturer')->latest()->paginate(15),
-            'q'       => null,
-            'status'  => null,
-        ]);
+        $course = Course::create($request->validated());
+        return redirect()->route('courses.show', $course)
+                         ->with('success', 'Mata kuliah berhasil ditambahkan.');
     }
 
     public function show(Course $course)
     {
-        $course->load('lecturer', 'assignments', 'materials');
+        $course->load('lecturer', 'materials', 'assignments');
         return view('courses.show', compact('course'));
     }
 
     public function edit(Course $course)
     {
+        // BUG 1a: Tidak ada Gate::authorize() di sini.
+        // Blade memakai @can('update', $course) untuk menyembunyikan tombol Edit,
+        // tapi URL /courses/{id}/edit tetap bisa diakses langsung oleh siapa pun.
+        // Dosen B bisa mengedit MK dosen A cukup dengan membuka URL-nya langsung.
         $lecturers = User::where('role', 'lecturer')->get();
         return view('courses.edit', compact('course', 'lecturers'));
     }
 
     public function update(UpdateCourseRequest $request, Course $course)
     {
+        // BUG 1a (lanjutan): Gate::authorize('update', $course) yang seharusnya ada
+        // di sini sengaja dihilangkan. @can di Blade hanya menyembunyikan tombol,
+        // bukan mencegah akses langsung ke URL.
         $course->update($request->validated());
-
         return redirect()->route('courses.show', $course)
                          ->with('success', 'Mata kuliah berhasil diperbarui.');
     }
 
     public function destroy(Course $course)
     {
+        // BUG 1a (lanjutan): sama — tidak ada Gate::authorize('delete', $course).
         $course->delete();
-
         return redirect()->route('courses.index')
                          ->with('success', 'Mata kuliah berhasil dihapus.');
     }
