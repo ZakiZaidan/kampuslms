@@ -14,18 +14,13 @@ class UserController extends Controller
     // Seharusnya memakai UserResource yang sudah di-whitelist field-nya.
     public function index()
     {
-        return response()->json(User::all());
+        return UserResource::collection(User::query()->paginate(15));
     }
 
     public function show(User $user)
     {
-        // BUG 5: Status code 403 dikembalikan sebagai 401.
-        // Ini terjadi kalau mahasiswa mencoba lihat detail user lain.
-        // 401 = "belum login" | 403 = "sudah login tapi tidak berhak"
-        // Memberikan 401 pada pengguna yang sudah login menyebabkan
-        // klien (app mobile) mencoba login ulang — padahal token valid.
         if (auth()->user()->role !== 'admin' && auth()->id() !== $user->id) {
-            return response()->json(['message' => 'Unauthorized.'], 401);
+            return response()->json(['message' => 'Forbidden.'], 403);
         }
 
         return new UserResource($user);
