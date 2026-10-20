@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreMaterialRequest;
 use App\Models\Course;
 use App\Models\Material;
-use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
 
 class MaterialController extends Controller
 {
@@ -21,47 +23,61 @@ class MaterialController extends Controller
 
     public function create(Course $course)
     {
+        Gate::authorize('create', $course);
         return view('materials.create', compact('course'));
     }
 
-    public function store(Request $request, Course $course)
+    public function store(StoreMaterialRequest $request, Course $course)
     {
-        $request->validate([
-            'title'   => ['required', 'string', 'max:150'],
-            'content' => ['nullable', 'string'],
-            'order'   => ['nullable', 'integer'],
+        Gate::authorize('create', $course);
+
+        $path = null;
+        $originalName = null;
+        $fileSize = null;
+
+        if ($request->hasFile('file')) {
+            $originalName = $request->file('file')->getClientOriginalName();
+
+            // BUG 3 (w09): storeAs() memakai nama asli berkas — nama yang datang dari user.
+            // Dua berkas dengan nama yang sama akan saling menimpa di storage.
+            // Seharusnya: $request->file('file')->store('materials') — nama UUID acak.
+            $path = $request->file('file')->storeAs('materials', $originalName);
+            $fileSize = $request->file('file')->getSize();
+        }
+
+        $course->materials()->create([
+            'title'         => $request->title,
+            'file_path'     => $path,
+            'original_name' => $originalName,
+            'file_size'     => $fileSize,
+            'url'           => $request->url,
+            'order'         => $request->order ?? 0,
         ]);
 
-        // BUG 9: $this->authorize() dipakai bukan Gate::authorize().
-        // Di Laravel 11+, kelas dasar Controller sudah TIDAK menyertakan
-        // trait AuthorizesRequests lagi, sehingga $this->authorize() akan
-        // melempar: "Call to undefined method authorize()".
-        // Seharusnya: Gate::authorize('create', $course);
-        $this->authorize('create', $course);
-
-        $material = $course->materials()->create($request->only(['title', 'content', 'order']));
-
-        return redirect()->route('materials.show', [$course, $material])
+        return redirect()->route('materials.index', $course)
                          ->with('success', 'Materi berhasil ditambahkan.');
     }
 
     public function edit(Course $course, Material $material)
     {
+        Gate::authorize('update', $course);
         return view('materials.edit', compact('course', 'material'));
     }
 
-    public function update(Request $request, Course $course, Material $material)
+    public function update(StoreMaterialRequest $request, Course $course, Material $material)
     {
-        $request->validate([
-            'title'   => ['required', 'string', 'max:150'],
-            'content' => ['nullable', 'string'],
-            'order'   => ['nullable', 'integer'],
-        ]);
+        Gate::authorize('update', $course);
 
-        // BUG 9 (lanjutan): $this->authorize() juga di sini.
-        $this->authorize('update', $course);
+        $data = ['title' => $request->title, 'url' => $request->url, 'order' => $request->order ?? 0];
 
-        $material->update($request->only(['title', 'content', 'order']));
+        if ($request->hasFile('file')) {
+            // BUG 3 (lanjutan): sama — storeAs dengan nama asli
+            $data['file_path']     = $request->file('file')->storeAs('materials', $request->file('file')->getClientOriginalName());
+            $data['original_name'] = $request->file('file')->getClientOriginalName();
+            $data['file_size']     = $request->file('file')->getSize();
+        }
+
+        $material->update($data);
 
         return redirect()->route('materials.show', [$course, $material])
                          ->with('success', 'Materi berhasil diperbarui.');
@@ -69,7 +85,13 @@ class MaterialController extends Controller
 
     public function destroy(Course $course, Material $material)
     {
-        $material->delete();
+        Gate::authorize('delete', $course);
+
+        // BUG 6 (w09): Record database dihapus tapi berkas fisik di storage TIDAK dihapus.
+        // Berkas menjadi "yatim" — ada di storage tapi tidak bisa diakses siapa pun.
+        // Seharusnya: Storage::delete($material->file_path); sebelum $material->delete();
+        $material->delete();  // Storage::delete($material->file_path) <- tidak ada!
+
         return redirect()->route('materials.index', $course)
                          ->with('success', 'Materi berhasil dihapus.');
     }

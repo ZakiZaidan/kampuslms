@@ -27,8 +27,18 @@ Route::middleware('auth')->group(function () {
 
     Route::middleware('role:mahasiswa')->prefix('mahasiswa')->name('mahasiswa.')->group(function () {
         Route::resource('submissions', SubmissionController::class)
-             ->only(['index', 'show', 'create', 'store']);
+             ->only(['index', 'show']);
+
+        // Route pengumpulan tugas — dipasangkan ke Assignment
+        Route::post('/assignments/{assignment}/submit', [SubmissionController::class, 'store'])
+             ->name('submissions.store');
+
+        // BUG 1 + BUG 2 (w09): Endpoint download ada, tapi berkas ada di disk 'public'
+        // (bisa diakses langsung via /storage/...) dan method tidak ada Gate::authorize().
+        Route::get('/submissions/{submission}/download', [SubmissionController::class, 'download'])
+             ->name('submissions.download');
     });
+
 
     // BUG 7: Route mata kuliah untuk dosen berada DI LUAR grup middleware role:dosen.
     // Semua pengguna yang sudah login (termasuk mahasiswa) bisa mengakses

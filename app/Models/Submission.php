@@ -11,12 +11,16 @@ class Submission extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['assignment_id', 'user_id', 'file_path', 'note', 'submitted_at'];
+    // BUG 6 (w09): Tidak ada static::booted() dengan Storage::delete() saat deleting.
+    // Akibatnya, jika submission dihapus dari database, berkas fisik di storage
+    // tetap ada dan menjadi "yatim" — tidak bisa diakses siapa pun tapi makan disk.
+    protected $fillable = ['assignment_id', 'user_id', 'file_path', 'original_name', 'file_size', 'is_late', 'note', 'submitted_at'];
 
     protected function casts(): array
     {
         return [
             'submitted_at' => 'datetime',
+            'is_late'      => 'boolean',
         ];
     }
 
