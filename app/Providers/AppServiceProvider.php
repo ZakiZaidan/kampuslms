@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -19,6 +20,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // BREAK 1 (w11): Aktifkan baris di bawah ini untuk mendeteksi seluruh N+1 query:
+        // Model::preventLazyLoading(! app()->isProduction());
     }
 }
