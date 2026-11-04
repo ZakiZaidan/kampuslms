@@ -4,6 +4,9 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\CourseController;
 use App\Http\Controllers\SubmissionController;
 use App\Http\Controllers\MaterialController;
+use App\Http\Controllers\AssignmentController;
+use App\Http\Controllers\GradeController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 
@@ -21,6 +24,12 @@ Route::middleware('auth')->group(function () {
     Route::get('/profile',   [ProfileController::class, 'edit'])->name('profile.edit');
     Route::put('/profile',   [ProfileController::class, 'update'])->name('profile.update');
 
+    // Notifikasi (semua pengguna yang login)
+    Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
+    // BUG 4 (w10): Endpoint markAsRead rentan IDOR jika method controller tidak cek kepemilikan!
+    Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead'])->name('notifications.read');
+    Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead'])->name('notifications.readAll');
+
     Route::middleware('role:admin')->prefix('admin')->name('admin.')->group(function () {
         Route::resource('courses', CourseController::class);
     });
@@ -37,6 +46,9 @@ Route::middleware('auth')->group(function () {
         // (bisa diakses langsung via /storage/...) dan method tidak ada Gate::authorize().
         Route::get('/submissions/{submission}/download', [SubmissionController::class, 'download'])
              ->name('submissions.download');
+
+        // Rekap nilai mahasiswa:
+        Route::get('/grades', [GradeController::class, 'studentGrades'])->name('grades.index');
     });
 
 
@@ -46,6 +58,13 @@ Route::middleware('auth')->group(function () {
     Route::prefix('dosen')->name('dosen.')->group(function () {
         Route::resource('courses', CourseController::class)->except(['index', 'show']);
         Route::resource('courses.materials', MaterialController::class)->shallow();
+
+        // Manajemen Tugas (Assignments) oleh Dosen:
+        Route::resource('courses.assignments', AssignmentController::class)->shallow();
+
+        // Penilaian (Grading) & Rekap Nilai oleh Dosen:
+        Route::post('/submissions/{submission}/grade', [GradeController::class, 'store'])->name('submissions.grade');
+        Route::get('/courses/{course}/grades', [GradeController::class, 'courseGrades'])->name('courses.grades');
     });
 
 });
