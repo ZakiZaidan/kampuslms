@@ -10,10 +10,6 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
-    // BUG 7: Login membedakan pesan error — user enumeration.
-    // "Email tidak terdaftar" vs "Kata sandi salah" memberi penyerang cara
-    // untuk mengecek apakah sebuah email terdaftar di sistem.
-    // Seharusnya satu pesan generic untuk keduanya.
     public function login(Request $request)
     {
         $request->validate([
@@ -23,15 +19,9 @@ class AuthController extends Controller
 
         $user = User::where('email', $request->email)->first();
 
-        if (! $user) {
+        if (! $user || ! Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([
-                'email' => ['Email tidak terdaftar di sistem.'],
-            ]);
-        }
-
-        if (! Hash::check($request->password, $user->password)) {
-            throw ValidationException::withMessages([
-                'email' => ['Kata sandi yang Anda masukkan salah.'],
+                'email' => ['Kredensial yang diberikan tidak cocok dengan data kami.'],
             ]);
         }
 

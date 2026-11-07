@@ -5,94 +5,127 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreMaterialRequest;
 use App\Models\Course;
 use App\Models\Material;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+use Illuminate\View\View;
 
 class MaterialController extends Controller
 {
-    public function index(Course $course)
+    public function index(Course $course): View
     {
+        Gate::authorize('view', $course);
+
         $materials = $course->materials()->orderBy('order')->get();
-        return view('materials.index', compact('course', 'materials'));
+        return view('courses.show', compact('course', 'materials'));
     }
 
-    public function show(Course $course, Material $material)
+    public function show(Material $material): View
     {
+        Gate::authorize('view', $material);
+        $course = $material->course;
+
         return view('materials.show', compact('course', 'material'));
     }
 
-    public function create(Course $course)
+    public function create(Course $course): View
     {
-        Gate::authorize('create', $course);
+        Gate::authorize('update', $course);
+
         return view('materials.create', compact('course'));
     }
 
-    public function store(StoreMaterialRequest $request, Course $course)
+    public function store(StoreMaterialRequest $request, Course $course): RedirectResponse
     {
-        Gate::authorize('create', $course);
+        Gate::authorize('update', $course);
 
         $path = null;
         $originalName = null;
         $fileSize = null;
 
         if ($request->hasFile('file')) {
-            $originalName = $request->file('file')->getClientOriginalName();
-
-            // BUG 3 (w09): storeAs() memakai nama asli berkas — nama yang datang dari user.
-            // Dua berkas dengan nama yang sama akan saling menimpa di storage.
-            // Seharusnya: $request->file('file')->store('materials') — nama UUID acak.
-            $path = $request->file('file')->storeAs('materials', $originalName);
-            $fileSize = $request->file('file')->getSize();
+            $file = $request->file('file');
+            $originalName = $file->getClientOriginalName();
+            $fileSize     = $file->getSize();
+            // Disimpan dengan nama acak UUID ke disk privat local
+            $path         = $file->store('materials', 'local');
         }
 
         $course->materials()->create([
-            'title'         => $request->title,
+            'title'         => $request->input('title'),
+            'content'       => $request->input('content'),
             'file_path'     => $path,
             'original_name' => $originalName,
             'file_size'     => $fileSize,
-            'url'           => $request->url,
-            'order'         => $request->order ?? 0,
+            'url'           => $request->input('url'),
+            'order'         => $request->input('order', 0),
         ]);
 
-        return redirect()->route('materials.index', $course)
+        return redirect()->route('courses.show', $course)
                          ->with('success', 'Materi berhasil ditambahkan.');
     }
 
-    public function edit(Course $course, Material $material)
+    public function edit(Material $material): View
     {
+        $course = $material->course;
         Gate::authorize('update', $course);
+
         return view('materials.edit', compact('course', 'material'));
     }
 
-    public function update(StoreMaterialRequest $request, Course $course, Material $material)
+    public function update(StoreMaterialRequest $request, Material $material): RedirectResponse
     {
+        $course = $material->course;
         Gate::authorize('update', $course);
 
-        $data = ['title' => $request->title, 'url' => $request->url, 'order' => $request->order ?? 0];
+        $data = [
+            'title'   => $request->input('title'),
+            'content' => $request->input('content'),
+            'url'     => $request->input('url'),
+            'order'   => $request->input('order', 0),
+        ];
 
         if ($request->hasFile('file')) {
-            // BUG 3 (lanjutan): sama — storeAs dengan nama asli
-            $data['file_path']     = $request->file('file')->storeAs('materials', $request->file('file')->getClientOriginalName());
-            $data['original_name'] = $request->file('file')->getClientOriginalName();
-            $data['file_size']     = $request->file('file')->getSize();
+            // Hapus berkas fisik lama agar tidak menjadi berkas yatim
+            if ($material->file_path && Storage::disk('local')->exists($material->file_path)) {
+                Storage::disk('local')->delete($material->file_path);
+            }
+
+            $file = $request->file('file');
+            $data['file_path']     = $file->store('materials', 'local');
+            $data['original_name'] = $file->getClientOriginalName();
+            $data['file_size']     = $file->getSize();
         }
 
         $material->update($data);
 
-        return redirect()->route('materials.show', [$course, $material])
+        return redirect()->route('courses.show', $course)
                          ->with('success', 'Materi berhasil diperbarui.');
     }
 
-    public function destroy(Course $course, Material $material)
+    public function destroy(Material $material): RedirectResponse
     {
-        Gate::authorize('delete', $course);
+        $course = $material->course;
+        Gate::authorize('update', $course);
 
-        // BUG 6 (w09): Record database dihapus tapi berkas fisik di storage TIDAK dihapus.
-        // Berkas menjadi "yatim" — ada di storage tapi tidak bisa diakses siapa pun.
-        // Seharusnya: Storage::delete($material->file_path); sebelum $material->delete();
-        $material->delete();  // Storage::delete($material->file_path) <- tidak ada!
+        // Hapus berkas fisik sebelum menghapus record dari database
+        if ($material->file_path && Storage::disk('local')->exists($material->file_path)) {
+            Storage::disk('local')->delete($material->file_path);
+        }
 
-        return redirect()->route('materials.index', $course)
+        $material->delete();
+
+        return redirect()->route('courses.show', $course)
                          ->with('success', 'Materi berhasil dihapus.');
+    }
+
+    public function download(Material $material): StreamedResponse
+    {
+        Gate::authorize('view', $material);
+
+        abort_unless($material->file_path && Storage::disk('local')->exists($material->file_path), 404, 'Berkas materi tidak ditemukan.');
+
+        return Storage::disk('local')->download($material->file_path, $material->original_name);
     }
 }

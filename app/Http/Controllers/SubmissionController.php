@@ -5,62 +5,71 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreSubmissionRequest;
 use App\Models\Assignment;
 use App\Models\Submission;
-use Illuminate\Http\Request;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Illuminate\View\View;
 
 class SubmissionController extends Controller
 {
-    public function index()
+    public function index(): View
     {
-        $submissions = auth()->user()->submissions()->with('assignment')->latest()->get();
-        return view('submissions.index', compact('submissions'));
+        $submissions = auth()->user()->submissions()
+            ->with(['assignment.course', 'grade'])
+            ->latest('submitted_at')
+            ->paginate(10);
+
+        return view('grades.student', compact('submissions'));
     }
 
-    // BUG 2 (w09): Tidak ada Gate::authorize() — IDOR versi berkas.
-    // Mahasiswa A bisa mengakses /submissions/{id} milik Mahasiswa B.
-    public function show(Submission $submission)
+    public function show(Submission $submission): View
     {
-        return view('submissions.show', compact('submission'));
+        Gate::authorize('view', $submission);
+
+        $submission->load(['assignment.course', 'user', 'grade']);
+
+        return view('assignments.show', [
+            'course'     => $submission->assignment->course,
+            'assignment' => $submission->assignment,
+            'submission' => $submission,
+        ]);
     }
 
-    public function store(StoreSubmissionRequest $request, Assignment $assignment)
+    public function store(StoreSubmissionRequest $request, Assignment $assignment): RedirectResponse
     {
-        // BUG 1 (w09): Disimpan ke disk 'public' — berkas bisa diakses tanpa login
-        // lewat URL: /storage/submissions/nama-berkas.pdf
-        // Seharusnya: $request->file('file')->store('submissions') — disk local (privat)
-        $originalName = $request->file('file')->getClientOriginalName();
+        $file = $request->file('file');
+        $originalName = $file->getClientOriginalName();
+        $fileSize     = $file->getSize();
 
-        // BUG 3 (w09): storeAs() memakai nama asli berkas.
-        // Dua mahasiswa dengan berkas bernama sama akan saling menimpa.
-        // Path traversal juga dimungkinkan jika nama berkas mengandung '../'.
-        // Seharusnya: $request->file('file')->store('submissions') untuk nama acak UUID.
-        $path = $request->file('file')->storeAs('submissions', $originalName, 'public');
+        // Disimpan ke disk privat 'local' dengan nama acak UUID (aman dari overwriting & path traversal)
+        $path = $file->store('submissions', 'local');
 
-        // BUG 7 (w09): is_late diterima dari request (bisa dimanipulasi client).
-        // Seharusnya dihitung di server: now()->isAfter($assignment->deadline)
+        // is_late dihitung di server berdasarkan tenggat tugas
+        $isLate = $assignment->due_at ? now()->isAfter($assignment->due_at) : false;
+
+        // updateOrCreate agar mahasiswa bisa merevisi tugas tanpa duplikasi data
         Submission::updateOrCreate(
             ['assignment_id' => $assignment->id, 'user_id' => auth()->id()],
             [
                 'file_path'     => $path,
                 'original_name' => $originalName,
-                'file_size'     => $request->file('file')->getSize(),
-                'is_late'       => $request->boolean('is_late'),  // BUG 7 — dari client!
+                'file_size'     => $fileSize,
+                'is_late'       => $isLate,
+                'note'          => $request->input('note'),
                 'submitted_at'  => now(),
             ]
         );
 
-        return redirect()->route('submissions.index')
-                         ->with('success', 'Tugas berhasil dikumpulkan.');
+        return back()->with('success', 'Tugas berhasil dikumpulkan.');
     }
 
-    // BUG 2 (w09): Endpoint download tanpa Gate::authorize().
-    // Mahasiswa A bisa mengunduh berkas submission milik Mahasiswa B
-    // cukup dengan mengetik: /submissions/99/download
     public function download(Submission $submission): StreamedResponse
     {
-        // Gate::authorize('view', $submission);  // <- seharusnya ada di sini!
-        abort_unless(Storage::disk('public')->exists($submission->file_path), 404);
-        return Storage::disk('public')->download($submission->file_path, $submission->original_name);
+        Gate::authorize('view', $submission);
+
+        abort_unless(Storage::disk('local')->exists($submission->file_path), 404, 'Berkas tidak ditemukan.');
+
+        return Storage::disk('local')->download($submission->file_path, $submission->original_name);
     }
 }

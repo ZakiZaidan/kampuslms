@@ -103,15 +103,8 @@ return [
     |
     */
 
-    // BUG 5 (w10): Driver failed_jobs disetel default ke 'null'.
-    // Akibatnya, saat pekerjaan antrean gagal mencapai batas maksimal percobaan,
-    // Laravel membuang data kegagalan tanpa mencatatnya ke tabel failed_jobs.
-    // Perintah 'php artisan queue:failed' akan selalu kosong meskipun ada job yang crash.
-    //
-    // Solusi:
-    // 'driver' => env('QUEUE_FAILED_DRIVER', 'database-uuids'),
     'failed' => [
-        'driver' => env('QUEUE_FAILED_DRIVER', 'null'), // BUG 5: Jejak job gagal dibuang!
+        'driver' => env('QUEUE_FAILED_DRIVER', 'database-uuids'),
         'database' => env('DB_CONNECTION', 'sqlite'),
         'table' => 'failed_jobs',
     ],

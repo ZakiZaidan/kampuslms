@@ -6,15 +6,9 @@
 /storage/*.key
 /storage/pail
 /vendor
-
-# BUG 7 (w12): Baris .env dikomentari / tidak diabaikan!
-# Akibatnya file .env lokal yang berisi password database pribadi
-# berisiko ikut ter-commit dan ter-push ke GitHub saat menjalankan 'git add .'.
-# Solusi: Hapus tanda '#' agar .env diabaikan oleh git.
-# .env
+.env
 .env.backup
 .env.production
-
 .phpactor.json
 .phpunit.result.cache
 Homestead.json

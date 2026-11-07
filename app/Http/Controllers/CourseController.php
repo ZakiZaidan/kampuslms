@@ -7,21 +7,28 @@ use App\Http\Requests\UpdateCourseRequest;
 use App\Models\Course;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 
 class CourseController extends Controller
 {
-    // BUG 3: Kebocoran daftar — semua mata kuliah dikembalikan tanpa
-    // menyaring berdasarkan peran pengguna.
-    // Mahasiswa seharusnya hanya melihat MK yang diikutinya.
-    // Dosen seharusnya hanya melihat MK yang diampunya.
-    // Seharusnya pakai match($user->role) untuk menyaring di level query.
     public function index(Request $request)
     {
-        $courses = Course::with('lecturer')
-            ->when($request->filled('q'), fn ($q) =>
-                $q->where('name', 'like', "%{$request->q}%")
-                  ->orWhere('code', 'like', "%{$request->q}%"))
-            ->paginate(15)
+        Gate::authorize('viewAny', Course::class);
+
+        $user = $request->user();
+        $query = Course::with('lecturer');
+
+        if (in_array($user->role, ['dosen', 'lecturer'])) {
+            $query->where('lecturer_id', $user->id);
+        } elseif (in_array($user->role, ['mahasiswa', 'student'])) {
+            $query->whereHas('students', fn ($q) => $q->where('users.id', $user->id));
+        }
+
+        $courses = $query->when($request->filled('q'), fn ($q) =>
+            $q->where('name', 'like', "%{$request->q}%")
+              ->orWhere('code', 'like', "%{$request->q}%"))
+            ->latest()
+            ->paginate(12)
             ->withQueryString();
 
         return view('courses.index', compact('courses'));
@@ -29,38 +36,52 @@ class CourseController extends Controller
 
     public function create()
     {
-        $lecturers = User::where('role', 'lecturer')->get();
+        Gate::authorize('create', Course::class);
+
+        $lecturers = User::whereIn('role', ['lecturer', 'dosen'])->get();
         return view('courses.create', compact('lecturers'));
     }
 
     public function store(StoreCourseRequest $request)
     {
-        $course = Course::create($request->validated());
+        Gate::authorize('create', Course::class);
+
+        $data = $request->validated();
+        if (in_array($request->user()->role, ['dosen', 'lecturer']) && empty($data['lecturer_id'])) {
+            $data['lecturer_id'] = $request->user()->id;
+        }
+
+        $course = Course::create($data);
         return redirect()->route('courses.show', $course)
                          ->with('success', 'Mata kuliah berhasil ditambahkan.');
     }
 
     public function show(Course $course)
     {
-        $course->load('lecturer', 'materials', 'assignments');
+        Gate::authorize('view', $course);
+
+        $course->load([
+            'lecturer',
+            'materials' => fn ($q) => $q->orderBy('order')->orderBy('created_at', 'desc'),
+            'assignments' => fn ($q) => $q->withCount('submissions')->orderBy('due_at', 'asc'),
+            'students'
+        ]);
+
         return view('courses.show', compact('course'));
     }
 
     public function edit(Course $course)
     {
-        // BUG 1a: Tidak ada Gate::authorize() di sini.
-        // Blade memakai @can('update', $course) untuk menyembunyikan tombol Edit,
-        // tapi URL /courses/{id}/edit tetap bisa diakses langsung oleh siapa pun.
-        // Dosen B bisa mengedit MK dosen A cukup dengan membuka URL-nya langsung.
-        $lecturers = User::where('role', 'lecturer')->get();
+        Gate::authorize('update', $course);
+
+        $lecturers = User::whereIn('role', ['lecturer', 'dosen'])->get();
         return view('courses.edit', compact('course', 'lecturers'));
     }
 
     public function update(UpdateCourseRequest $request, Course $course)
     {
-        // BUG 1a (lanjutan): Gate::authorize('update', $course) yang seharusnya ada
-        // di sini sengaja dihilangkan. @can di Blade hanya menyembunyikan tombol,
-        // bukan mencegah akses langsung ke URL.
+        Gate::authorize('update', $course);
+
         $course->update($request->validated());
         return redirect()->route('courses.show', $course)
                          ->with('success', 'Mata kuliah berhasil diperbarui.');
@@ -68,7 +89,8 @@ class CourseController extends Controller
 
     public function destroy(Course $course)
     {
-        // BUG 1a (lanjutan): sama — tidak ada Gate::authorize('delete', $course).
+        Gate::authorize('delete', $course);
+
         $course->delete();
         return redirect()->route('courses.index')
                          ->with('success', 'Mata kuliah berhasil dihapus.');

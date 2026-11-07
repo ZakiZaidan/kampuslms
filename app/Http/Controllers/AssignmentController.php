@@ -35,14 +35,36 @@ class AssignmentController extends Controller
         // Listener akan mengirimkan notifikasi ke seluruh mahasiswa terdaftar.
         event(new AssignmentCreated($assignment));
 
-        return redirect()->route('dosen.courses.show', $course)
+        return redirect()->route('courses.show', $course)
                          ->with('success', 'Tugas baru berhasil dipublikasikan.');
     }
 
-    public function show(Course $course, Assignment $assignment): View
+    public function show(Assignment $assignment): View
     {
-        $assignment->load(['submissions.user', 'submissions.grade']);
+        $assignment->load(['course.lecturer', 'submissions.user', 'submissions.grade']);
+        $course = $assignment->course;
 
-        return view('assignments.show', compact('course', 'assignment'));
+        Gate::authorize('view', $course);
+
+        $mySubmission = null;
+        if (auth()->check() && in_array(auth()->user()->role, ['mahasiswa', 'student'])) {
+            $mySubmission = $assignment->submissions()
+                ->where('user_id', auth()->id())
+                ->with('grade')
+                ->first();
+        }
+
+        return view('assignments.show', compact('course', 'assignment', 'mySubmission'));
+    }
+
+    public function destroy(Assignment $assignment): RedirectResponse
+    {
+        $course = $assignment->course;
+        Gate::authorize('update', $course);
+
+        $assignment->delete();
+
+        return redirect()->route('courses.show', $course)
+                         ->with('success', 'Tugas berhasil dihapus.');
     }
 }

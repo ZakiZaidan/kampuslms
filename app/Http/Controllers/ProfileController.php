@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class ProfileController extends Controller
 {
@@ -11,20 +12,17 @@ class ProfileController extends Controller
         return view('profile.edit', ['user' => auth()->user()]);
     }
 
-    // BUG 4: Mass assignment — role bisa diubah lewat form update profil.
-    // $request->all() menyertakan semua field yang dikirim, termasuk 'role'.
-    // Pengguna bisa mengirim: name=A&email=a@a.com&role=admin
-    // dan kolom role akan terupdate karena User memakai $guarded = [] (dari w03).
-    // Seharusnya pakai $request->only(['name', 'email']) atau
-    // Form Request dengan $fillable yang ketat.
     public function update(Request $request)
     {
-        $request->validate([
+        $user = auth()->user();
+
+        $validated = $request->validate([
             'name'  => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255'],
+            'email' => ['required', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
         ]);
 
-        auth()->user()->update($request->all());
+        // Mencegah mass-assignment attack (misal eskalasi role) dengan hanya memperbarui data yang telah divalidasi
+        $user->update($validated);
 
         return redirect()->route('profile.edit')
                          ->with('success', 'Profil berhasil diperbarui.');

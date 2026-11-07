@@ -3,59 +3,49 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Auth\LoginRequest;
 use App\Models\User;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
 
 class AuthenticatedSessionController extends Controller
 {
-    public function create()
+    public function create(): View
     {
         return view('auth.login');
     }
 
-    public function store(Request $request)
+    public function store(Request $request): RedirectResponse
     {
-        $request->validate([
+        $credentials = $request->validate([
             'email'    => ['required', 'email'],
-            'password' => ['required'],
+            'password' => ['required', 'string'],
         ]);
 
-        $user = User::where('email', $request->email)->first();
-
-        // BUG 6: User enumeration — dua pesan berbeda memberi tahu penyerang
-        // apakah email itu terdaftar atau tidak.
-        if (! $user) {
+        if (! Auth::attempt($credentials, $request->boolean('remember'))) {
             throw ValidationException::withMessages([
-                'email' => ['Akun dengan email ini tidak ditemukan.'],
+                'email' => ['Kombinasi email dan kata sandi yang Anda masukkan salah.'],
             ]);
         }
 
-        if (! Hash::check($request->password, $user->password)) {
-            throw ValidationException::withMessages([
-                'email' => ['Kata sandi yang Anda masukkan tidak tepat.'],
-            ]);
-        }
+        // Regenerasi session ID untuk mencegah serangan session fixation
+        $request->session()->regenerate();
 
-        Auth::login($user);
-
-        // BUG 5: session()->regenerate() DIHILANGKAN.
-        // Tanpanya, ID session tidak berubah setelah login.
-        // Penyerang yang berhasil menanamkan ID session tertentu pada korban
-        // akan ikut "login" saat korban berhasil autentikasi.
-        // Seharusnya: $request->session()->regenerate();
-
-        return redirect()->intended(route('dashboard'));
+        return redirect()->intended(route('dashboard'))
+                         ->with('success', 'Selamat datang kembali, ' . Auth::user()->name . '!');
     }
 
-    public function destroy(Request $request)
+    public function destroy(Request $request): RedirectResponse
     {
-        Auth::guard('web')->logout();
+        Auth::logout();
+
         $request->session()->invalidate();
         $request->session()->regenerateToken();
-        return redirect('/');
+
+        return redirect()->route('login')
+                         ->with('success', 'Anda telah berhasil keluar.');
     }
 }
