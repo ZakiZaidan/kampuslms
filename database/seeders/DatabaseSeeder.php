@@ -80,7 +80,7 @@ class DatabaseSeeder extends Seeder
                 'description' => 'Mempelajari arsitektur web modern, REST API, autentikasi, queue, dan deployment produksi dengan Laravel.',
                 'sks'         => 3,
                 'lecturer_id' => $dosen1->id,
-                'status'      => 'published',
+                'status'      => 'active',
             ]
         );
 
@@ -91,7 +91,7 @@ class DatabaseSeeder extends Seeder
                 'description' => 'Prinsip desain sistem, agile methodology, version control, dan arsitektur pengujian perangkat lunak.',
                 'sks'         => 3,
                 'lecturer_id' => $dosen2->id,
-                'status'      => 'published',
+                'status'      => 'active',
             ]
         );
 
@@ -102,7 +102,7 @@ class DatabaseSeeder extends Seeder
                 'description' => 'Model relasional, normalisasi skema, indexing, query optimization, dan transaksi database ACID.',
                 'sks'         => 3,
                 'lecturer_id' => $dosen1->id,
-                'status'      => 'published',
+                'status'      => 'active',
             ]
         );
 
