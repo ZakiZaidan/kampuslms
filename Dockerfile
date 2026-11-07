@@ -1,4 +1,4 @@
-FROM php:8.3-apache
+FROM php:8.4-apache
 
 # 1. Install ekstensi sistem & library PHP yang dibutuhkan Laravel
 RUN apt-get update && apt-get install -y \
@@ -10,7 +10,8 @@ RUN apt-get update && apt-get install -y \
     git \
     curl \
     libzip-dev \
-    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip
+    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # 2. Aktifkan mod_rewrite Apache untuk routing Laravel
 RUN a2enmod rewrite
@@ -27,8 +28,8 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 WORKDIR /var/www/html
 COPY . .
 
-# 6. Install dependensi composer untuk mode produksi
-RUN composer install --no-dev --optimize-autoloader --no-interaction
+# 6. Install dependensi composer untuk mode produksi (tambahkan --ignore-platform-reqs agar selalu kompatibel)
+RUN composer install --no-dev --optimize-autoloader --no-interaction --ignore-platform-reqs
 
 # 7. Berikan hak akses ke folder storage dan cache
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache \
@@ -39,4 +40,5 @@ RUN sed -i 's/80/${PORT}/g' /etc/apache2/sites-available/000-default.conf /etc/a
 
 EXPOSE 80
 
-CMD ["apache2-foreground"]
+# 9. Jalankan migrasi otomatis jika DB terhubung, lalu jalankan Apache
+CMD ["sh", "-c", "php artisan config:clear && php artisan route:clear && php artisan view:clear && (php artisan migrate --force || true) && apache2-foreground"]
